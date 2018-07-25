@@ -18,6 +18,8 @@ import android.view.accessibility.AccessibilityEvent;
 
 import com.yarolegovich.discretescrollview.transform.DiscreteScrollItemTransformer;
 
+import java.util.Locale;
+
 /**
  * Created by yarolegovich on 17.02.2017.
  */
@@ -104,9 +106,7 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
 
         ensureValidPosition(state);
 
-        if (!state.isMeasuring()) {
-            checkRecyclerViewDimensionsChanged();
-        }
+        updateRecyclerDimensions(state);
 
         //onLayoutChildren may be called multiple times and this check is required so that the flag
         //won't be cleared until onLayoutCompleted
@@ -116,8 +116,6 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
                 initChildDimensions(recycler);
             }
         }
-
-        updateRecyclerDimensions();
 
         recyclerViewProxy.detachAndScrapAttachedViews(recycler);
 
@@ -132,14 +130,6 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
             //which can lead to a crash (position out of bounds) when data set
             //is not persisted across rotations
             currentPosition = 0;
-        }
-    }
-
-    private void checkRecyclerViewDimensionsChanged() {
-        if (recyclerViewProxy.getWidth() != viewWidth || recyclerViewProxy.getHeight() != viewHeight) {
-            viewWidth = recyclerViewProxy.getWidth();
-            viewHeight = recyclerViewProxy.getHeight();
-            recyclerViewProxy.removeAllViews();
         }
     }
 
@@ -172,7 +162,15 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
         recyclerViewProxy.detachAndScrapView(viewToMeasure, recycler);
     }
 
-    protected void updateRecyclerDimensions() {
+    protected void updateRecyclerDimensions(RecyclerView.State state) {
+        boolean dimensionsChanged = !state.isMeasuring()
+                && (recyclerViewProxy.getWidth()  != viewWidth
+                ||  recyclerViewProxy.getHeight() != viewHeight);
+        if (dimensionsChanged) {
+            viewWidth = recyclerViewProxy.getWidth();
+            viewHeight = recyclerViewProxy.getHeight();
+            recyclerViewProxy.removeAllViews();
+        }
         recyclerCenter.set(
                 recyclerViewProxy.getWidth() / 2,
                 recyclerViewProxy.getHeight() / 2);
@@ -362,7 +360,13 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
         if (currentPosition == position || pendingPosition != NO_POSITION) {
             return;
         }
-        startSmoothPendingScroll(position);
+        checkTargetPosition(state, position);
+        if (currentPosition == NO_POSITION) {
+            //Layout not happened yet
+            currentPosition = position;
+        } else {
+            startSmoothPendingScroll(position);
+        }
     }
 
     @Override
@@ -709,6 +713,14 @@ class DiscreteScrollLayoutManager extends RecyclerView.LayoutManager {
         return orientationHelper.isViewVisible(
                 viewCenter, childHalfWidth, childHalfHeight,
                 endBound, extraLayoutSpace);
+    }
+
+    private void checkTargetPosition(RecyclerView.State state, int targetPosition) {
+        if (targetPosition < 0 || targetPosition >= state.getItemCount()) {
+            throw new IllegalArgumentException(String.format(Locale.US,
+                    "target position out of bounds: position=%d, itemCount=%d",
+                    targetPosition, state.getItemCount()));
+        }
     }
 
     protected void setRecyclerViewProxy(RecyclerViewProxy recyclerViewProxy) {
